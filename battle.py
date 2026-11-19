@@ -25,6 +25,7 @@ class BattleSystem:
         self.bullets = []
         self.dodge_timer = 0
         self.invuln = 0
+        self.ate_hrumki = False
 
     def start(self, enemy_type):
         self.active = True
@@ -35,6 +36,7 @@ class BattleSystem:
         self.sub_index = 0
         self.bullets = []
         self.invuln = 0
+        self.ate_hrumki = False
         if enemy_type == "leopard":
             self.enemy_name, self.enemy_hp, self.enemy_max_hp = "Снежный барс", 30, 30
             self.message = "* Снежный барс преградил тропу!"
@@ -67,6 +69,7 @@ class BattleSystem:
                 self.btn_index = (self.btn_index + 1) % 4
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
                 if self.btn_index == 0:
+                    self.ate_hrumki = False
                     dmg = 10 + stats["lv"] * 4
                     self.enemy_hp -= dmg
                     if self.enemy_hp <= 0:
@@ -75,12 +78,13 @@ class BattleSystem:
                         gain = 15 if self.enemy_type == "leopard" else 12
                         stats[key] += 1
                         stats["exp"] += gain
+                        stats["gold"] += 15
                         while stats["exp"] >= stats["lv"] * 20:
                             stats["exp"] -= stats["lv"] * 20
                             stats["lv"] += 1
                             stats["max_hp"] += 4
                             stats["hp"] = stats["max_hp"]
-                        self.end_text = f"* Победа! +{gain} ОП (УР {stats['lv']}). Б:{stats['leopard_kills']}/10 М:{stats['pug_kills']}/5"
+                        self.end_text = f"* Победа! +{gain} ОП, +15G (УР {stats['lv']}). Б:{stats['leopard_kills']}/10 М:{stats['pug_kills']}/5"
                         self.phase = "END_MSG"
                     else:
                         self.message = f"* Удар на {dmg} урона! ({self.enemy_hp}/{self.enemy_max_hp} ОЗ)"
@@ -88,17 +92,12 @@ class BattleSystem:
                 elif self.btn_index == 1:
                     self.phase, self.sub_index = "ACT_MENU", 0
                 elif self.btn_index == 2:
-                    if stats["tea"] > 0:
-                        stats["tea"] -= 1
-                        stats["hp"] = min(stats["max_hp"], stats["hp"] + 12)
-                        self.message = "* Горячий чай восстановил 12 ОЗ!"
-                        self.start_enemy_turn()
-                    else:
-                        self.message = "* Чай в термосе закончился!"
+                    self.phase, self.sub_index = "ITEM_MENU", 0
                 elif self.btn_index == 3:
                     if self.sparable:
                         stats["spares"] += 1
-                        self.end_text = f"* Вы пощадили врага ({self.enemy_name})!"
+                        stats["gold"] += 10
+                        self.end_text = f"* Пощада ({self.enemy_name})! Получено +10G."
                         self.phase = "END_MSG"
                     else:
                         self.message = "* Враг не готов. Попробуйте ДЕЙСТВИЕ!"
@@ -108,12 +107,40 @@ class BattleSystem:
             elif event.key in (pygame.K_ESCAPE, pygame.K_x):
                 self.phase = "MENU"
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                self.ate_hrumki = False
                 if self.sub_index == 0:
                     self.message = "* Снежный барс (АТК 4). Любит похвалу." if self.enemy_type == "leopard" else "* Пухлый мопс (АТК 3). Хочет играть."
                 else:
                     self.sparable = True
                     self.message = "* Вы погладили барса. Он замурчал!" if self.enemy_type == "leopard" else "* Вы почесали мопса. Он виляет хвостом!"
                 self.start_enemy_turn()
+        elif self.phase == "ITEM_MENU":
+            if event.key in (pygame.K_UP, pygame.K_w, pygame.K_DOWN, pygame.K_s):
+                self.sub_index = 1 - self.sub_index
+            elif event.key in (pygame.K_ESCAPE, pygame.K_x):
+                self.phase = "MENU"
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                if self.sub_index == 0:
+                    if stats["hrumki"] > 0:
+                        stats["hrumki"] -= 1
+                        stats["hp"] = min(stats["max_hp"], stats["hp"] + 10)
+                        self.ate_hrumki = True
+                        self.message = "* Вы съели Хрумки! +10 ОЗ. (Запейте Газявой для комбо!)"
+                        self.start_enemy_turn()
+                    else:
+                        self.message = "* Хрумки закончились!"
+                        self.phase = "MENU"
+                else:
+                    if stats["gazyava"] > 0:
+                        stats["gazyava"] -= 1
+                        heal = 30 if self.ate_hrumki else 10
+                        stats["hp"] = min(stats["max_hp"], stats["hp"] + heal)
+                        self.message = f"* КОМБО! Хрумки + Газява восстановили +{heal} ОЗ!" if self.ate_hrumki else "* Вы выпили Газяву! Восстановлено +10 ОЗ."
+                        self.ate_hrumki = False
+                        self.start_enemy_turn()
+                    else:
+                        self.message = "* Газява закончилась!"
+                        self.phase = "MENU"
         elif self.phase == "END_MSG" and event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
             self.active = False
             return "FINISHED"
@@ -173,12 +200,17 @@ class BattleSystem:
                 a2 = "Погладить" if self.enemy_type == "leopard" else "Почесать за ухом"
                 surface.blit(font.render(("> * Осмотреть" if self.sub_index == 0 else "  * Осмотреть"), True, YELLOW if self.sub_index == 0 else WHITE), (95, 235))
                 surface.blit(font.render((f"> * {a2}" if self.sub_index == 1 else f"  * {a2}"), True, YELLOW if self.sub_index == 1 else WHITE), (95, 280))
+            elif self.phase == "ITEM_MENU":
+                i1 = f"Хрумки ({stats['hrumki']} шт.) — +10 ОЗ"
+                i2 = f"Газява ({stats['gazyava']} шт.) — +10 ОЗ (или +30 ОЗ после Хрумок!)"
+                surface.blit(small_font.render((f"> * {i1}" if self.sub_index == 0 else f"  * {i1}"), True, YELLOW if self.sub_index == 0 else WHITE), (95, 235))
+                surface.blit(small_font.render((f"> * {i2}" if self.sub_index == 1 else f"  * {i2}"), True, YELLOW if self.sub_index == 1 else WHITE), (95, 280))
             elif self.phase == "END_MSG":
                 surface.blit(small_font.render(self.end_text, True, YELLOW), (90, 250))
                 surface.blit(small_font.render("[Enter — продолжить]", True, WHITE), (90, 305))
             else:
                 surface.blit(small_font.render(self.message, True, WHITE), (90, 240))
-        surface.blit(small_font.render(f"{player_name}   УР {stats['lv']}   ОЗ {stats['hp']}/{stats['max_hp']}   ЧАЙ: {stats['tea']}", True, WHITE), (70, 378))
+        surface.blit(small_font.render(f"{player_name}   УР {stats['lv']}   ОЗ {stats['hp']}/{stats['max_hp']}   ЗОЛОТО: {stats['gold']}G", True, WHITE), (70, 378))
         for i, label in enumerate(["БИТВА", "ДЕЙСТВИЕ", "ВЕЩИ", "ПОЩАДА"]):
             rect = pygame.Rect(70 + i * 172, 415, 152, 46)
             col = YELLOW if (self.phase == "MENU" and self.btn_index == i) else (255, 140, 40)
