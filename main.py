@@ -66,7 +66,8 @@ def draw_wrapped_text(surface, text, font_obj, color, rect):
     words = text.split(" ")
     lines, line = [], ""
     for w in words:
-        if font_obj.size(line + w + " ") <= rect.width:
+        text_w, _ = font_obj.size(line + w + " ")
+        if text_w <= rect.width:
             line += w + " "
         else:
             lines.append(line)
